@@ -14,8 +14,8 @@
   .const COLOR_START_L     = $00
   .const COLOR_START_H     = $D8
   .const ABOUT_POS         = $07D3
-
-#import "ptrs.asm"
+  .const PTR1 = $FB
+  .const PTR2 = $FD
 
 main:
   // Clear screen kernel function
@@ -40,8 +40,13 @@ main:
   ldx #7
   ldy #69
   lda #25
-
+  clc
   jsr debug
+  sec
+  lda #0
+  cmp #0
+  jsr debug
+
   rts
 
 #import "debug.asm"
