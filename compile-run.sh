@@ -2,4 +2,7 @@
 
 set -euo pipefail
 
-java -jar /Users/steve/KickAssembler/KickAss.jar test.asm && x64sc test.prg
+BASENAME=${1:-test}
+
+java -jar /Users/steve/KickAssembler/KickAss.jar "${BASENAME}.asm" && x64sc "${BASENAME}.prg"
+
