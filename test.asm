@@ -27,6 +27,81 @@
   lda #$00
   sta BACKGROUND_COLOR
 
+
+letter_testing:
+  sei        // disable interrupts
+
+  lda #$50
+  sta PTR1
+  lda #$D1
+  sta PTR1 + 1
+
+  // Capture letter bytes
+  
+  lda #$33  // make the CPU see the Character Generator ROM...
+  sta $01   // ...at $D000 by storing %00110011 into location $01
+  ldy #0
+!loop:
+  lda (PTR1), y
+  sta letter, y
+  iny
+  cpy #8
+  bne !loop-
+  lda #$37    // switch in I/O mapped registers again...
+  sta $01     // ... with %00110111 so CPU can see them
+  
+
+  // Setup PTR2 for writing
+  lda #TEXT_START_L
+  sta PTR2
+  lda #TEXT_START_H
+  sta PTR2 + 1
+
+  ldx #0
+  ldy #0
+!loop_x:
+!loop_y:
+  lda letter, x
+  and bit_masks, y
+  cmp bit_masks, y
+  beq !draw_1+
+
+!draw_0:
+  lda #32
+  sta (PTR2), y
+  jmp !next+
+!draw_1:
+  // Draw 1
+  lda #224
+  sta (PTR2), y
+
+!next:
+  iny
+  cpy #8
+  bne !loop_y-
+  
+  // Advance to next line
+  // Add 40 to PTR2
+  lda PTR2
+  clc
+  adc #40
+  sta PTR2
+  bcc !skip+
+  inc PTR2 + 1
+!skip:
+  ldy #0
+  inx
+  cpx #8
+  bne !loop_x-
+  
+done: 
+  cli         // enable interrupts
+  // jmp done
+  rts
+
+
+
+
   // Bottom 2 rows blue space
   ldx #0
 blue_lines:
@@ -49,7 +124,8 @@ tag:
   sta ABOUT_POS, x
   inx
   jmp tag
-  
+
+
 main_init:
   ldy #0
   ldx #1
@@ -170,9 +246,14 @@ about:
   .text "mrclay.org nov 2023"
   .byte 0
 
+bit_masks:
+  .byte 128, 64, 32, 16, 8, 4, 2, 1
+
 letter:
   .byte 0, 0, 0, 0, 0, 0, 0, 0
 
 tmp_a: .byte 0
 tmp_x: .byte 0
+current_line: .byte 0
 
+#import "debug.asm"
