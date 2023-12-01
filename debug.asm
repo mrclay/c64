@@ -45,6 +45,7 @@ debug:
   // Fill template with AA XX YY
 
   // A high nibble, then low
+  lda _debug_axys
   ror; ror; ror; ror
   jsr hexit_from_nibble
   sta _debug_output + $1
