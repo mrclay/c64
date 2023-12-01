@@ -5,18 +5,18 @@
 *=$0801   // Starting Address BASIC + 1 => SYS 2049
  
   .byte $0C,$08,$40,$00,$9E,$20,$32,$30,$36,$32,$00,$00,$00 // BASIC CODE: 1024 SYS 2062
-  
+
   .const BORDER_COLOR      = $D020
   .const BACKGROUND_COLOR  = $D021
   .const RASTER_LINE       = $D012
-
   .const TEXT_START_H      = $04
   .const TEXT_START_L      = $00
-
   .const COLOR_START_H     = $D8
   .const COLOR_START_L     = $00
-
   .const ABOUT_POS         = $07D3
+  .const PTR1              = $FB
+  .const PTR2              = $FD
+  .const CHAR_ROM          = $D000
 
   // Clear screen kernel function
   jsr $E544
@@ -29,7 +29,6 @@
 
   // Bottom 2 rows blue space
   ldx #0
-  
 blue_lines:
   lda #32
   ora #%10000000
@@ -63,23 +62,23 @@ main:
   sbc #40
   tax
   
-  // $FB will serve as start of 2-byte address pointer [low, high]
+  // PTR1 will serve as start of 2-byte address pointer [low, high]
   lda #TEXT_START_L
-  sta $FB
+  sta PTR1
   lda #TEXT_START_H
-  sta $FC
+  sta PTR1 + 1
 
-  // $FD will serve as start of 2-byte address pointer [low, high]
+  // PTR2 will serve as start of 2-byte address pointer [low, high]
   lda #COLOR_START_L
-  sta $FD
+  sta PTR2
   lda #COLOR_START_H
-  sta $FE
+  sta PTR2 + 1
 
 loop_low_byte:
-  // Maybe we'll write a space, depending on $FB and X
+  // Maybe we'll write a space, depending on PTR1 and X
   lda #$ff
   sec
-  sbc $FB
+  sbc PTR1
   and #%00000111
   cmp #%00000111
   bne write_char
@@ -89,26 +88,26 @@ write_blank:
   lda #32
   // Write only upper (negative) chars
   ora #%10000000
-  // Address written to is really $FC, $FB + Y
-  sta ($FB), y
+  // Address written to is really PTR1 + 1, PTR1 + Y
+  sta (PTR1), y
   // Fixed color for these
   lda #$0E
-  sta ($FD), y
+  sta (PTR2), y
   jmp increments
 
 write_char:
-  // Put X + $FB into A
+  // Put X + PTR1 into A
   txa
   clc
-  adc $FB
+  adc PTR1
   // Write only upper (negative) chars
   ora #%10000000
-  // Address written to is really $FC, $FB + Y
-  sta ($FB), y
+  // Address written to is really PTR1 + 1, PTR1 + Y
+  sta (PTR1), y
 
   // Store X on stack
+  stx tmp_x
   txa
-  pha
 
   // Make A change less often
   clc
@@ -120,27 +119,26 @@ write_char:
   // Use A as index into colors
   tax
   lda colors, x
-  sta ($FD), y
+  sta (PTR2), y
 
   // Restore X
-  pla
-  tax
+  ldx tmp_x
   jmp increments
 
 increments:
-  inc $FB
-  inc $FD
-  // Check if $FB wrapped to 0
-  lda $FB
+  inc PTR1
+  inc PTR2
+  // Check if PTR1 wrapped to 0
+  lda PTR1
   cmp #0
   beq fb_wrapped_to_0
 
   // Two checks to see if we've written the last char.
-  lda $FC
+  lda PTR1 + 1
   cmp #7
   bne loop_low_byte
   // Passed Check 1
-  lda $FB
+  lda PTR1
   cmp #152
   bne loop_low_byte
   // Passed Check 2
@@ -148,21 +146,20 @@ increments:
 
 fb_wrapped_to_0:
   // Bump the high address bytes
-  inc $FC
-  inc $FE
+  inc PTR1 + 1
+  inc PTR2 + 1
   jmp loop_low_byte
 
 // Awaits the 255 raster line.
 wait:
-  // Store A to be nice
-  pha
-wait_1:
+  sta tmp_a
+!loop:
   // Check raster line
   lda #$FF
   cmp RASTER_LINE
-  bne wait_1
+  bne !loop-
   // Restore A
-  pla
+  lda tmp_a
   rts
 
 // Smoother color gradient
@@ -172,3 +169,10 @@ colors:
 about:
   .text "mrclay.org nov 2023"
   .byte 0
+
+letter:
+  .byte 0, 0, 0, 0, 0, 0, 0, 0
+
+tmp_a: .byte 0
+tmp_x: .byte 0
+
