@@ -6,14 +6,15 @@
   BORDER_COLOR      = $D020
   BACKGROUND_COLOR  = $D021
   RASTER_LINE       = $D012
-  TEXT_START_H      = $04
-  TEXT_START_L      = $00
-  COLOR_START_H     = $D8
-  COLOR_START_L     = $00
+  CHAR_START        = $0400
+  COLOR_START       = $D800
   ABOUT_POS         = $07D3
   PTR1              = $FB
+  PTR1_HIGH         = $FC
   PTR2              = $FD
+  PTR2_HIGH         = $FE
   CHAR_ROM          = $D000
+  MOVE_CHAR_BY      = 40
 
   ; Clear screen kernel function
   jsr $E544
@@ -125,75 +126,74 @@ tag_setup
 tag
   lda about, x
   cmp #0
-  beq main_init
+  beq main
   ora #%10000000
   sta ABOUT_POS, x
   inx
   jmp tag
 
-
-main_init
-  ldy #0
-  ldx #1
-
 main
-  jsr wait
-  ; Remove some from X
-  txa
+  ; jsr wait
+  ; Remove some from char_choice_offset
+  lda char_choice_offset
   sec
-  sbc #40
-  tax
+  sbc #MOVE_CHAR_BY
+  sta char_choice_offset
   
-  ; PTR1 will serve as start of 2-byte address pointer [low, high]
-  lda #TEXT_START_L
+  ; Start at top left of screen memory and write each byte.
+  lda #0
+  sta active_letter_block
+  sta letter_idx
+
+  ; PTR1 will point to screen character address
+  lda #<CHAR_START
   sta PTR1
-  lda #TEXT_START_H
-  sta PTR1 + 1
+  lda #>CHAR_START
+  sta PTR1_HIGH
 
-  ; PTR2 will serve as start of 2-byte address pointer [low, high]
-  lda #COLOR_START_L
+  ; PTR2 will point to screen color address
+  lda #<COLOR_START
   sta PTR2
-  lda #COLOR_START_H
-  sta PTR2 + 1
+  lda #>COLOR_START
+  sta PTR2_HIGH
 
-loop_low_byte
-  ; Maybe we'll write a space, depending on PTR1 and X
-  lda #$ff
-  sec
-  sbc PTR1
-  and #%00000111
-  cmp #%00000111
-  bne write_char
-  jmp write_blank
-  
-write_blank
-  lda #32
-  ; Write only upper (negative) chars
-  ora #%10000000
+draw_next_character
+  ; Figure out what we're drawing.
+  lda active_letter_block
+  cmp #2
+  ; idx >= 2, we're definitely not drawing a letter
+  bcs draw_colored_char
+
+  ; check the big set
+  lda active_letter_block
+  cmp #0
+  beq check_set_0
+  jmp check_set_1
+
+draw_blank
+  lda #32 + 128
+  ldy ptr_idx
   ; Address written to is really PTR1 + 1, PTR1 + Y
   sta (PTR1), y
   ; Fixed color for these
   lda #$0E
   sta (PTR2), y
-  jmp increments
+  jmp next_screen_position
 
-write_char
-  ; Put X + PTR1 into A
-  txa
+draw_colored_char
+  ; Char is char_choice_offset + PTR1
+  lda char_choice_offset
   clc
   adc PTR1
   ; Write only upper (negative) chars
   ora #%10000000
-  ; Address written to is really (PTR1, PTR1 + 1) + 1
+  ; Draw character
+  ldy ptr_idx
   sta (PTR1), y
 
-  ; Store X on stack
-  stx tmp_x
-  txa
-
-  ; Make A change less often
+  ; Make color change less often
+  lda char_choice_offset
   clc
-  ror
   ror
   ror
   ror
@@ -201,36 +201,73 @@ write_char
   ; Use A as index into colors
   tax
   lda colors, x
+  ; Change color
+  ldy ptr_idx
   sta (PTR2), y
+  jmp next_screen_position
 
-  ; Restore X
-  ldx tmp_x
-  jmp increments
-
-increments
+next_screen_position
   inc PTR1
   inc PTR2
+  inc letter_idx
+
   ; Check if PTR1 wrapped to 0
   lda PTR1
   cmp #0
-  beq fb_wrapped_to_0
+  beq ptr1_wrapped_to_0
 
   ; Two checks to see if we've written the last char.
   lda PTR1 + 1
   cmp #7
-  bne loop_low_byte
+  bne handle_big_wrapping
   ; Passed Check 1
   lda PTR1
   cmp #152
-  bne loop_low_byte
+  bne handle_big_wrapping
   ; Passed Check 2
   jmp main
 
-fb_wrapped_to_0
+ptr1_wrapped_to_0
   ; Bump the high address bytes
   inc PTR1 + 1
   inc PTR2 + 1
-  jmp loop_low_byte
+
+handle_big_wrapping
+  lda letter_idx
+  ; < 160 we're done with this position
+  cmp #160
+  bne draw_next_character
+  
+  ; We need to reset offset and bump active set
+  lda #0
+  sta letter_idx
+  ; The screen has 6 4-line blocks
+  inc active_letter_block
+  ; if < 6, we're OK to move on
+  lda active_letter_block
+  cmp #6
+  bne draw_next_character
+  ; reset the active block
+  lda #0
+  sta active_letter_block
+  jmp draw_next_character
+
+check_set_0
+  ldy letter_idx
+  lda big_set_0, y
+  cmp #1
+  beq check_set_blank
+  jmp draw_colored_char
+
+check_set_1
+  ldy letter_idx
+  lda big_set_1, y
+  cmp #1
+  beq check_set_blank
+  jmp draw_colored_char
+
+check_set_blank
+  jmp draw_blank
 
 ; Awaits the 255 raster line.
 wait
@@ -260,14 +297,18 @@ letter
 
 tmp_a !byte 0
 tmp_x !byte 0
-current_line !byte 0
+char_choice_offset  !byte 1
+ptr_idx !byte 0
 
-on_locations_0
+active_letter_block !byte 0
+letter_idx !byte 0
+
+big_set_0
   !byte 0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-on_locations_1
+big_set_1
   !byte 0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
