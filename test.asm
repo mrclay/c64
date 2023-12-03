@@ -161,14 +161,17 @@ draw_next_character
   ; Figure out what we're drawing.
   lda active_letter_block
   cmp #2
-  ; idx >= 2, we're definitely not drawing a letter
+  ; idx < 2, we don't have a set for
+  bcc draw_colored_char
+  cmp #4
+  ; idx >= 4, we don't have a set for
   bcs draw_colored_char
 
   ; check the big set
   lda active_letter_block
-  cmp #0
-  beq check_set_0
-  jmp check_set_1
+  cmp #2
+  beq check_set_2
+  jmp check_set_3
 
 draw_blank
   lda #32 + 128
@@ -206,6 +209,22 @@ draw_colored_char
   sta (PTR2), y
   jmp next_screen_position
 
+check_set_2
+  ldy letter_idx
+  lda big_set_2, y
+  and #1
+  cmp #1
+  beq check_set_blank
+  jmp draw_colored_char
+
+check_set_3
+  ldy letter_idx
+  lda big_set_3, y
+  eor #1
+  cmp #1
+  beq check_set_blank
+  jmp draw_colored_char
+
 next_screen_position
   inc PTR1
   inc PTR2
@@ -236,8 +255,13 @@ handle_big_wrapping
   lda letter_idx
   ; < 160 we're done with this position
   cmp #160
-  bne draw_next_character
-  
+  bne jmp_to_draw_next
+  jmp skip_draw_next
+
+jmp_to_draw_next
+  jmp draw_next_character
+
+skip_draw_next
   ; We need to reset offset and bump active set
   lda #0
   sta letter_idx
@@ -246,25 +270,18 @@ handle_big_wrapping
   ; if < 6, we're OK to move on
   lda active_letter_block
   cmp #6
-  bne draw_next_character
+  bne jmp_to_draw_next
   ; reset the active block
   lda #0
   sta active_letter_block
+  inc screen_writes
+  lda screen_writes
+  cmp #0
+  beq slide_letters
   jmp draw_next_character
 
-check_set_0
-  ldy letter_idx
-  lda big_set_0, y
-  cmp #1
-  beq check_set_blank
-  jmp draw_colored_char
-
-check_set_1
-  ldy letter_idx
-  lda big_set_1, y
-  cmp #1
-  beq check_set_blank
-  jmp draw_colored_char
+slide_letters
+  jmp draw_next_character
 
 check_set_blank
   jmp draw_blank
@@ -302,16 +319,17 @@ ptr_idx !byte 0
 
 active_letter_block !byte 0
 letter_idx !byte 0
+screen_writes !byte 0
 
-big_set_0
-  !byte 0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-big_set_1
-  !byte 0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+big_set_2
+  !byte 0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,1,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,0,1,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+big_set_3
+  !byte 0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,0,0,0,1,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 track_line !byte 0
