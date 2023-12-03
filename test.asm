@@ -133,18 +133,36 @@ tag
   jmp tag
 
 main
-  ; jsr wait
-  ; Remove some from char_choice_offset
-  lda char_choice_offset
-  sec
-  sbc #MOVE_CHAR_BY
-  sta char_choice_offset
-  
+  ; jsr sr_wait
   ; Start at top left of screen memory and write each byte.
   lda #0
   sta active_letter_block
   sta letter_idx
+  jsr sr_adjust_char_choice_offset
+  jsr sr_move_pointers_to_topleft
 
+  ; draw
+  ;   jsr sr_should_draw_blank
+  ;   cmp #0
+  ;   beq skip_draw_char
+  ;   jsr draw_char
+  ;   jmp after_draw
+  ; skip_draw_char
+  ;   jsr draw_blank
+  ; after_draw
+  ; next_screen_position
+  ; 
+
+  jmp draw_something
+
+sr_adjust_char_choice_offset
+  lda char_choice_offset
+  sec
+  sbc #MOVE_CHAR_BY
+  sta char_choice_offset
+  rts
+
+sr_move_pointers_to_topleft
   ; PTR1 will point to screen character address
   lda #<CHAR_START
   sta PTR1
@@ -156,8 +174,9 @@ main
   sta PTR2
   lda #>COLOR_START
   sta PTR2_HIGH
+  rts
 
-draw_next_character
+draw_something
   ; Figure out what we're drawing.
   lda active_letter_block
   cmp #2
@@ -167,11 +186,29 @@ draw_next_character
   ; idx >= 4, we don't have a set for
   bcs draw_colored_char
 
-  ; check the big set
+  ; active_letter_block either 2 or 3
+  ldy letter_idx
   lda active_letter_block
   cmp #2
-  beq check_set_2
-  jmp check_set_3
+  beq pre_check_set_2
+  jmp pre_check_set_3
+pre_check_set_2
+  lda big_set_2, y
+  and #1
+  jmp check_set
+pre_check_set_3
+  lda big_set_3, y
+  and #1
+check_set
+  beq set_has_1
+  jmp draw_colored_char
+set_has_1
+  jmp draw_blank
+
+after_set_check
+  cmp #1
+  beq draw_blank
+  jmp draw_colored_char
 
 draw_blank
   lda #32 + 128
@@ -209,22 +246,6 @@ draw_colored_char
   sta (PTR2), y
   jmp next_screen_position
 
-check_set_2
-  ldy letter_idx
-  lda big_set_2, y
-  and #1
-  cmp #1
-  beq check_set_blank
-  jmp draw_colored_char
-
-check_set_3
-  ldy letter_idx
-  lda big_set_3, y
-  eor #1
-  cmp #1
-  beq check_set_blank
-  jmp draw_colored_char
-
 next_screen_position
   inc PTR1
   inc PTR2
@@ -255,11 +276,11 @@ handle_big_wrapping
   lda letter_idx
   ; < 160 we're done with this position
   cmp #160
-  bne jmp_to_draw_next
+  bne jmp2draw_something
   jmp skip_draw_next
 
-jmp_to_draw_next
-  jmp draw_next_character
+jmp2draw_something
+  jmp draw_something
 
 skip_draw_next
   ; We need to reset offset and bump active set
@@ -270,7 +291,7 @@ skip_draw_next
   ; if < 6, we're OK to move on
   lda active_letter_block
   cmp #6
-  bne jmp_to_draw_next
+  bne jmp2draw_something
   ; reset the active block
   lda #0
   sta active_letter_block
@@ -278,16 +299,16 @@ skip_draw_next
   lda screen_writes
   cmp #0
   beq slide_letters
-  jmp draw_next_character
+  jmp draw_something
 
 slide_letters
-  jmp draw_next_character
+  jmp draw_something
 
-check_set_blank
+jmp2_draw_blank
   jmp draw_blank
 
 ; Awaits the 255 raster line.
-wait
+sr_wait
   sta tmp_a
 -
   ; Check raster line
