@@ -1,5 +1,7 @@
 *.sym
 *.dbg
 *.prg
+*.out
 *.vs
 .source.txt
+/build

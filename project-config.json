@@ -1,0 +1,14 @@
+{
+    "name": "c64",
+    "description": "Project c64",
+    "toolkit": "acme",
+    "sources": [
+        "test.asm"
+    ],
+    "build": "debug",
+    "definitions": [],
+    "includes": [
+    ],
+    "args": [],
+    "compiler": ""
+}
