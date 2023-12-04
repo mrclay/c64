@@ -16,14 +16,8 @@
   CHAR_ROM          = $D000
   MOVE_CHAR_BY      = 40
 
-  ; Clear screen kernel function
-  jsr $E544
- 
-  ; Green border, black background
-  lda #$0E
-  sta BORDER_COLOR
-  lda #$00
-  sta BACKGROUND_COLOR
+
+main
 
 ; !zone
 ; letter_testing
@@ -106,12 +100,46 @@
 ;   ; jmp done
 ;   rts
 
+  jsr SR_screen_setup
+  jsr SR_blue_space
+  jsr SR_write_tag
+  jsr SR_main_loop
+  rts
 
 
+!zone
+SR_screen_setup
+  ; Clear screen kernel function
+  jsr $E544
+ 
+  ; Green border, black background
+  lda #$0E
+  sta BORDER_COLOR
+  lda #$00
+  sta BACKGROUND_COLOR
+  rts
 
+
+!zone
+SR_write_tag
+  ldx #0
+-
+  lda about, x
+  cmp #0
+  beq .done
+  ora #%10000000
+  sta ABOUT_POS, x
+  inx
+  jmp -
+.done
+  rts
+
+
+!zone
+SR_blue_space
   ; Bottom 2 rows blue space
   ldx #0
-blue_lines
+-
   lda #32
   ora #%10000000
   sta $0798, x
@@ -119,50 +147,20 @@ blue_lines
   sta $DB98, x
   inx
   cpx #80
-  bne blue_lines
+  bne -
+  rts
 
-tag_setup
-  ldx #0
-tag
-  lda about, x
-  cmp #0
-  beq main
-  ora #%10000000
-  sta ABOUT_POS, x
-  inx
-  jmp tag
 
-main
-  ; jsr sr_wait
-  ; Start at top left of screen memory and write each byte.
-  lda #0
-  sta active_letter_block
-  sta letter_idx
-  jsr sr_adjust_char_choice_offset
-  jsr sr_move_pointers_to_topleft
-
-  ; draw
-  ;   jsr sr_should_draw_blank
-  ;   cmp #0
-  ;   beq skip_draw_char
-  ;   jsr draw_char
-  ;   jmp after_draw
-  ; skip_draw_char
-  ;   jsr draw_blank
-  ; after_draw
-  ; next_screen_position
-  ; 
-
-  jmp draw_something
-
-sr_adjust_char_choice_offset
+!zone
+SR_main_loop
+-
+  ; adjust char_choice_offset
   lda char_choice_offset
   sec
   sbc #MOVE_CHAR_BY
   sta char_choice_offset
-  rts
 
-sr_move_pointers_to_topleft
+  ; Pointers to top left
   ; PTR1 will point to screen character address
   lda #<CHAR_START
   sta PTR1
@@ -174,154 +172,192 @@ sr_move_pointers_to_topleft
   sta PTR2
   lda #>COLOR_START
   sta PTR2_HIGH
+
+  lda #0
+  sta idx_in_active_set
+  sta active_letter_block
+
+  jsr SR_draw_screen
+  jmp -
   rts
 
-draw_something
-  ; Figure out what we're drawing.
-  lda active_letter_block
-  cmp #2
-  ; idx < 2, we don't have a set for
-  bcc draw_colored_char
-  cmp #4
-  ; idx >= 4, we don't have a set for
-  bcs draw_colored_char
 
-  ; active_letter_block either 2 or 3
-  ldy letter_idx
-  lda active_letter_block
-  cmp #2
-  beq pre_check_set_2
-  jmp pre_check_set_3
-pre_check_set_2
-  lda big_set_2, y
-  and #1
-  jmp check_set
-pre_check_set_3
-  lda big_set_3, y
-  and #1
-check_set
-  beq set_has_1
-  jmp draw_colored_char
-set_has_1
-  jmp draw_blank
+!zone
+SR_draw_screen
+  ;jsr SR_await_raster_line
+-
+  jsr SR_draw_one
+  jsr SR_bump_letter_idx
+  jsr SR_bump_pointers
+  cmp #0
+  beq -
+  ; end of screen reached
+  
+  lda color_idx
+  clc
+  adc #1
+  and #$0F
+  sta color_idx
+  rts
 
-after_set_check
-  cmp #1
-  beq draw_blank
-  jmp draw_colored_char
 
-draw_blank
-  lda #32 + 128
+!zone
+SR_await_raster_line
+-
+  ; Check raster line
+  lda #$FF
+  cmp RASTER_LINE
+  bne -
+  rts
+
+
+!zone
+SR_draw_one
+  jmp .decide_which_to_draw
+.draw_big_letter_piece
+  lda #(32 + 128)
   ldy ptr_idx
   ; Address written to is really PTR1 + 1, PTR1 + Y
   sta (PTR1), y
   ; Fixed color for these
   lda #$0E
   sta (PTR2), y
-  jmp next_screen_position
-
-draw_colored_char
+  rts
+.draw_text_char
   ; Char is char_choice_offset + PTR1
   lda char_choice_offset
   clc
   adc PTR1
   ; Write only upper (negative) chars
   ora #%10000000
+
   ; Draw character
   ldy ptr_idx
   sta (PTR1), y
 
-  ; Make color change less often
-  lda char_choice_offset
-  clc
-  ror
-  ror
-  ror
-  and #$0F
-  ; Use A as index into colors
-  tax
-  lda colors, x
   ; Change color
+  ldx color_idx
+  lda colors, x
   ldy ptr_idx
   sta (PTR2), y
-  jmp next_screen_position
+  rts
 
-next_screen_position
+; Sets A to 1 or 0
+.decide_which_to_draw
+  lda active_letter_block
+  ; idx < 2, we don't have a set for this
+  cmp #2
+  bcc .draw_text_char
+  ; idx >= 4, we don't have a set for this
+  cmp #4
+  bcs .draw_text_char
+
+  ; active_letter_block either 2 or 3
+  ; check the active block
+  cmp #2
+  beq .pre_check_set_2
+  jmp .pre_check_set_3
+.pre_check_set_2
+  ldy idx_in_active_set
+  lda big_set_2, y
+  and #1
+  jmp .do_check
+.pre_check_set_3
+  ldy idx_in_active_set
+  lda big_set_3, y
+  and #1
+.do_check
+  cmp #0
+  beq .draw_text_char
+  jmp .draw_big_letter_piece
+
+
+!zone
+; Sets A to 1 if end of screen, otherwise 0
+SR_bump_pointers
   inc PTR1
   inc PTR2
-  inc letter_idx
 
-  ; Check if PTR1 wrapped to 0
+  jsr SR_is_end_of_screen
+  cmp #1
+  beq .return_1
+
+  ; check for low byte wrapping
   lda PTR1
+  ; If not 0, we did not wrap
   cmp #0
-  beq ptr1_wrapped_to_0
+  bne .return_0
 
-  ; Two checks to see if we've written the last char.
+  ; rollover high byte
+  lda #0
+  sta PTR1
+  sta PTR2
+  inc PTR1_HIGH
+  inc PTR2_HIGH
+.return_0
+  lda #0
+  rts
+.return_1
+  lda #1
+  rts
+
+
+!zone
+SR_is_end_of_screen
   lda PTR1 + 1
   cmp #7
-  bne handle_big_wrapping
-  ; Passed Check 1
+  bne .return_0
   lda PTR1
   cmp #152
-  bne handle_big_wrapping
-  ; Passed Check 2
-  jmp main
+  bne .return_0
+  ; yes
+  lda #1
+  rts
+.return_0
+  lda #0
+  rts
 
-ptr1_wrapped_to_0
-  ; Bump the high address bytes
-  inc PTR1 + 1
-  inc PTR2 + 1
 
-handle_big_wrapping
-  lda letter_idx
-  ; < 160 we're done with this position
+!zone
+SR_bump_letter_idx
+  inc idx_in_active_set
+  lda idx_in_active_set
+  ; < 160 nothing to do
   cmp #160
-  bne jmp2draw_something
-  jmp skip_draw_next
-
-jmp2draw_something
-  jmp draw_something
-
-skip_draw_next
+  bne .done
   ; We need to reset offset and bump active set
   lda #0
-  sta letter_idx
+  sta idx_in_active_set
   ; The screen has 6 4-line blocks
   inc active_letter_block
   ; if < 6, we're OK to move on
   lda active_letter_block
   cmp #6
-  bne jmp2draw_something
-  ; reset the active block
+  bne .done
+  ; Wrap active block
   lda #0
   sta active_letter_block
-  inc screen_writes
-  lda screen_writes
-  cmp #0
-  beq slide_letters
-  jmp draw_something
-
-slide_letters
-  jmp draw_something
-
-jmp2_draw_blank
-  jmp draw_blank
-
-; Awaits the 255 raster line.
-sr_wait
-  sta tmp_a
--
-  ; Check raster line
-  lda #$FF
-  cmp RASTER_LINE
-  bne -
-  ; Restore A
-  lda tmp_a
+  ; inc screen_writes
+  ; lda screen_writes
+  ; cmp #0
+  ; bne .done
+  ; jsr SR_slide_letters
+.done
   rts
+
+
+!zone
+SR_slide_letters
+  rts
+
+
+;;;;;;;;;;;;;;;;;;; Data
 
 ; Smoother color gradient
 colors
-  !byte 11, 11, 12, 15, 1, 7, 13, 3, 14, 6, 2, 10, 9, 8, 5, 4
+  !byte 11, 11, 12, 15, 1, 7, 13, 3, 4, 14, 6, 2, 10, 9, 8, 5
+
+color_idx !byte 0
 
 about
   !scr "mrclay.org nov 2023"
@@ -338,22 +374,20 @@ tmp_x !byte 0
 char_choice_offset  !byte 1
 ptr_idx !byte 0
 
-active_letter_block !byte 0
-letter_idx !byte 0
+active_letter_block !byte 2 ; TODO reset to 0
+idx_in_active_set !byte 0
 screen_writes !byte 0
 
 big_set_2
-  !byte 0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,1,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,0,1,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 big_set_3
-  !byte 0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,0,0,0,1,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-  !byte 0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  !byte 0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 
 track_line !byte 0
 track_x !byte 0
-
-!source "debug.asm"
