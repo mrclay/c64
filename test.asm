@@ -198,6 +198,15 @@ SR_draw_screen
   adc #1
   and #$0F
   sta color_idx
+
+  inc screen_writes
+  lda screen_writes
+  cmp #2
+  bne .done
+  lda #0
+  sta screen_writes
+  jsr SR_slide_letters
+.done
   rts
 
 
@@ -337,11 +346,6 @@ SR_bump_letter_idx
   ; Wrap active block
   lda #0
   sta active_letter_block
-  ; inc screen_writes
-  ; lda screen_writes
-  ; cmp #0
-  ; bne .done
-  ; jsr SR_slide_letters
 .done
   rts
 
@@ -374,7 +378,7 @@ tmp_x !byte 0
 char_choice_offset  !byte 1
 ptr_idx !byte 0
 
-active_letter_block !byte 2 ; TODO reset to 0
+active_letter_block !byte 0
 idx_in_active_set !byte 0
 screen_writes !byte 0
 
@@ -388,6 +392,3 @@ big_set_3
   !byte 0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
   !byte 0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-
-track_line !byte 0
-track_x !byte 0
