@@ -177,18 +177,22 @@ SR_main_loop
   sta idx_in_active_set
   sta active_letter_block
 
-  jsr SR_draw_screen
+  jmp draw_screen
+after_draw_screen
   jmp -
   rts
 
 
 !zone
-SR_draw_screen
+draw_screen
   ;jsr SR_await_raster_line
 -
-  jsr SR_draw_one
-  jsr SR_bump_letter_idx
-  jsr SR_bump_pointers
+  jmp draw_one
+after_draw_one
+  jmp bump_letter_idx
+after_bump_letter
+  jmp bump_pointers
+after_bump_pointers
   cmp #0
   beq -
   ; end of screen reached
@@ -207,7 +211,7 @@ SR_draw_screen
   sta screen_writes
   jsr SR_slide_letters
 .done
-  rts
+  jmp after_draw_screen
 
 
 !zone
@@ -221,7 +225,7 @@ SR_await_raster_line
 
 
 !zone
-SR_draw_one
+draw_one
   jmp .decide_which_to_draw
 .draw_big_letter_piece
   lda #(32 + 128)
@@ -231,7 +235,7 @@ SR_draw_one
   ; Fixed color for these
   lda #$0E
   sta (PTR2), y
-  rts
+  jmp after_draw_one
 .draw_text_char
   ; Char is char_choice_offset + PTR1
   lda char_choice_offset
@@ -249,7 +253,7 @@ SR_draw_one
   lda colors, x
   ldy ptr_idx
   sta (PTR2), y
-  rts
+  jmp after_draw_one
 
 ; Sets A to 1 or 0
 .decide_which_to_draw
@@ -283,11 +287,12 @@ SR_draw_one
 
 !zone
 ; Sets A to 1 if end of screen, otherwise 0
-SR_bump_pointers
+bump_pointers
   inc PTR1
   inc PTR2
 
-  jsr SR_is_end_of_screen
+  jmp screen_end_check
+after_screen_end_check  
   cmp #1
   beq .return_1
 
@@ -305,14 +310,14 @@ SR_bump_pointers
   inc PTR2_HIGH
 .return_0
   lda #0
-  rts
+  jmp after_bump_pointers
 .return_1
   lda #1
-  rts
+  jmp after_bump_pointers
 
 
 !zone
-SR_is_end_of_screen
+screen_end_check
   lda PTR1 + 1
   cmp #7
   bne .return_0
@@ -321,14 +326,14 @@ SR_is_end_of_screen
   bne .return_0
   ; yes
   lda #1
-  rts
+  jmp after_screen_end_check
 .return_0
   lda #0
-  rts
+  jmp after_screen_end_check
 
 
 !zone
-SR_bump_letter_idx
+bump_letter_idx
   inc idx_in_active_set
   lda idx_in_active_set
   ; < 160 nothing to do
@@ -347,7 +352,7 @@ SR_bump_letter_idx
   lda #0
   sta active_letter_block
 .done
-  rts
+  jmp after_bump_letter
 
 
 !zone
@@ -358,26 +363,16 @@ SR_slide_letters
 ;;;;;;;;;;;;;;;;;;; Data
 
 ; Smoother color gradient
-colors
-  !byte 11, 11, 12, 15, 1, 7, 13, 3, 4, 14, 6, 2, 10, 9, 8, 5
-
+colors !byte 11, 11, 12, 15, 1, 7, 13, 3, 4, 14, 6, 2, 10, 9, 8, 5
 color_idx !byte 0
-
-about
-  !scr "mrclay.org nov 2023"
+about !scr "mrclay.org nov 2023"
   !byte 0
-
-bit_masks
-  !byte 128, 64, 32, 16, 8, 4, 2, 1
-
-letter
-  !byte 0, 0, 0, 0, 0, 0, 0, 0
-
+bit_masks !byte 128, 64, 32, 16, 8, 4, 2, 1
+letter !byte 0, 0, 0, 0, 0, 0, 0, 0
 tmp_a !byte 0
 tmp_x !byte 0
 char_choice_offset  !byte 1
 ptr_idx !byte 0
-
 active_letter_block !byte 0
 idx_in_active_set !byte 0
 screen_writes !byte 0
