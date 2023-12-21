@@ -1,57 +1,37 @@
-// horizontal offsets (0-256) for each of the 8 sprites we use for the snow - these are the initial values
-// they will be incremented randomly as the program runs
+*=$0801   ; Starting Address BASIC + 1 => SYS 2049
 
-sprite_v_offsets:
-.byte 62, 124, 0, 186, 31, 215, 93, 155
+  !byte $0C,$08,$40,$00,$9E,$20,$32,$30,$36,$32,$00,$00,$00 ; BASIC CODE 1024 SYS 2062
 
-// this is macro (used at assembly time by the kick assembler) to calculate the content of the sprite pointers
-// we strip the left bits ($3FFF mask) because the address of the sprite is always relative to the beginning of the video block
-// the c64 has four video blocks $0000-$3fff, $4000-$7fff, $8000-$bfff, $c000-$ffff
-// see https://www.c64-wiki.com/wiki/Sprite#Sprite_pointers
+init_screen:
+	lda #$00	;load black color
+	sta $d020 	;transfer acc to screen memory
+	sta $d021 	;transfer acc to border memory
+clear:
+	lda #$20 	;load space character
+	sta $0400,x 	;transfer acc to character memory
+	sta $0500,x
+	sta $0600,x
+	dex
+	bne clear 	;branch to clr if x is not zero
 
-.function toSpritePtr(addr) {
-   .return (addr&$3FFF)/64
-}
+	lda #%00000001	;binary set sprite to scale x2
+	sta $D01D	;store binary value from acc to scalex2 x-axis
+	sta $D017	;store binary value from acc to scalex2 y-axis
 
-spritePtrs:
-.byte toSpritePtr(snow_sprite_small), toSpritePtr(snow_sprite_big)
-.byte toSpritePtr(snow_sprite_small), toSpritePtr(snow_sprite_big)
-.byte toSpritePtr(snow_sprite_small), toSpritePtr(snow_sprite_big)
-.byte toSpritePtr(snow_sprite_small), toSpritePtr(snow_sprite_big)
+	lda #$0E	;load light blue color in acc
+	sta $D027	;copy acc in sprite 1 color memory
+	lda #$80	;value of 80 points to memory address 2000?
+	sta $07f8	;load acc into sprite 1 memory address
+	lda #$01	;load value of 1 in acc to turn on sprite
+	sta $d015	;load acc in memory to turn on sprite 1
+	lda #$80	;load value 80 in acc for position
+	sta $d000	;load acc in sprite 1 x coordinate mem
+	sta $d001	;load acc in sprite 1 y coordinate mem
+loop:
+	jmp loop
 
-// you can use http://spritemate.com/ to edit these
-// just press file->save file->kick ass(hex) once you designed your sprite
-
-
-// be carefull with the address you chose for your sprites. two notes:
-// 1. it needs to be divisible by 64 - see above - you can use the .align 64 if it helps
-// 2. it needs to be in the same video block where you want to display them
-//    the c64 has four video blocks $0000-$3fff, $4000-$7fff, $8000-$bfff, $c000-$ffff
-
-* = $b60 "Sprites"; // address $b60 means that this sprites can only be used with the screen on block $0000-$3fff
-
-.align 64
-
-snow_sprite_big:
-.byte $00,$00,$00,$00,$00,$00,$00,$00
-.byte $00,$00,$00,$00,$00,$00,$00,$00
-.byte $08,$00,$00,$88,$80,$00,$5d,$00
-.byte $00,$3e,$00,$00,$7f,$00,$01,$ff
-.byte $c0,$00,$7f,$00,$00,$3e,$00,$00
-.byte $5d,$00,$00,$88,$80,$00,$08,$00
-.byte $00,$00,$00,$00,$00,$00,$00,$00
-.byte $00,$00,$00,$00,$00,$00,$00,$03
-
-// memory for sprite patterns needs to be divisible by 64 - see above why
-
-snow_sprite_small:
-
-.byte $00,$00,$00,$00,$00,$00,$00,$00
-.byte $00,$00,$00,$00,$00,$00,$00,$00
-.byte $00,$00,$00,$00,$00,$00,$08,$00
-.byte $00,$41,$00,$00,$2a,$00,$00,$00
-.byte $00,$00,$aa,$80,$00,$00,$00,$00
-.byte $2a,$00,$00,$41,$00,$00,$08,$00
-.byte $00,$00,$00,$00,$00,$00,$00,$00
-.byte $00,$00,$00,$00,$00,$00,$00,$03
-
+*=$2000
+	!byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	!byte $00,$00,$00,$cc,$00,$01,$fe,$00,$01,$ae,$00,$01,$ae,$00,$03,$ff
+	!byte $00,$07,$ff,$80,$07,$ff,$80,$03,$ff,$00,$00,$00,$00,$00,$00,$00
+	!byte $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$05
