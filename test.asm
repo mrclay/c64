@@ -138,8 +138,9 @@ irq_handler
 
 !zone
 SR_after_screen
-  ;jsr SR_wrap_lines
-  ;jsr SR_wrap_colors
+  ; TODO make these a lot faster or spread them across interrupts
+  ; jsr SR_wrap_lines
+  ; jsr SR_wrap_colors
   rts
 
 
