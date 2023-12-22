@@ -80,7 +80,7 @@ SR_screen_setup
   lda #SPRITE_DATA_R
   sta SPRITE_PTR5
 
-  ; turn on all 8 sprites
+  ; turn on sprite 1
   lda #%11111111
 	sta $d015
 
@@ -104,6 +104,7 @@ SR_screen_setup
 
 !zone
 irq_handler
+  lda $D012
   lda active_interrupt
   cmp #5
   beq .irq_5
@@ -116,13 +117,14 @@ irq_handler
 .irq_not_5
   ldy active_interrupt
   lda sprite_y_values, y
-  ; Why does sprite 1 stay at the bottom???
-  sta SPRITE_X1 + 1
+  !for i, 0, 7 {
+    sta SPRITE_X1 + 1 + (2 * i)
+  }
 
 .done
   ; set up for next rasterline
   ldy active_interrupt
-  lda next_rasterline, y
+  lda rasterlines + 1, y
   sta $D012
   iny
   cpy #NUM_INTERRUPTS
@@ -136,25 +138,8 @@ irq_handler
 
 !zone
 SR_after_screen
-  lda (PTR1), y
-  eor #%10000000
-  sta (PTR1), y
-
-  jsr SR_wrap_lines
-
-  ; Color
-  lda #0
-  sta (PTR2), y
-
-  inc screen_writes
-  lda screen_writes
-  cmp #2
-  bne .skip_screen_writes_reset
-  lda #0
-  sta screen_writes
-  jsr SR_wrap_colors
-
-.skip_screen_writes_reset
+  ;jsr SR_wrap_lines
+  ;jsr SR_wrap_colors
   rts
 
 
@@ -233,16 +218,16 @@ temp_line !fill 40
 
 active_interrupt !byte 0
 
-next_rasterline
-  !for i, 1, 4 {
-    !byte (21 * i)
+rasterlines
+  !for i, 0, 4 {
+    !byte 50 + (42 * i) - 15
   }
-  !byte $f7
-  !byte 0
+  !byte 210
+  !byte 50 + (42 * 0) - 15
 
 sprite_y_values
   !for i, 0, 4 {
-    !byte (50 + (40 * i)) % 255
+    !byte 50 + (42 * i)
   }
 
 
@@ -353,7 +338,7 @@ SR_init_irqs
   ldy #0
   sty active_interrupt
 
-  lda next_rasterline, y
+  lda rasterlines, y
   sta $D012
 
   lda #<irq_handler    ; set interrupt vectors, pointing to interrupt service routine below
