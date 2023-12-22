@@ -33,8 +33,8 @@
 
 main
   jsr SR_screen_setup
-  jsr SR_main_loop
-  rts
+  jsr SR_init_irqs
+  jmp *
 
 
 !zone
@@ -100,13 +100,7 @@ SR_screen_setup
   rts
 
 
-!zone
-SR_main_loop
-  lda #0
-  sta screen_writes
--
-  jsr SR_await_raster_line
-
+irq_f7
   lda (PTR1), y
   eor #%10000000
   sta (PTR1), y
@@ -126,7 +120,34 @@ SR_main_loop
   jsr SR_wrap_colors
 
 skip_screen_writes_reset
-  jmp -
+  asl $d019   ; clear interupt flag
+  jmp $ea81
+
+
+!zone
+SR_init_irqs
+  sei                  ; set interrupt bit, make the CPU ignore interrupt requests
+  lda #%01111111       ; switch off interrupt signals from CIA-1
+  sta $DC0D
+
+  AND $D011            ; clear most significant bit of VIC's raster register
+  sta $D011
+
+  lda $DC0D            ; acknowledge pending interrupts from CIA-1
+  lda $DD0D            ; acknowledge pending interrupts from CIA-2
+
+  lda #210             ; set rasterline where interrupt shall occur
+  sta $D012
+
+  lda #<irq_f7          ; set interrupt vectors, pointing to interrupt service routine below
+  sta $0314
+  lda #>irq_f7
+  sta $0315
+
+  lda #%00000001       ; enable raster interrupt signals from VIC
+  sta $D01A
+
+  cli                  ; clear interrupt flag, allowing the CPU to respond to interrupt requests
   rts
 
 
