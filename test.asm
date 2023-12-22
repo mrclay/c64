@@ -16,6 +16,10 @@
   CHAR_ROM          = $D000
   MOVE_CHAR_BY      = 40
 
+  SPRITE_DATA_L = $80
+  SPRITE_DATA_R = $81
+  SPRITE_DATA_SQUARE = $82
+
   SPRITE_PTR1 = $07F8
   SPRITE_PTR2 = $07F9
   SPRITE_PTR3 = $07FA
@@ -38,8 +42,7 @@ SR_screen_setup
   ; Clear screen kernel function
   jsr $E544
 
-  ; Green border, black background
-  lda #$0E
+  lda #$00
   sta BORDER_COLOR
   lda #$00
   sta BACKGROUND_COLOR
@@ -50,19 +53,6 @@ SR_screen_setup
   sta PTR1
   lda #>CHAR_START
   sta PTR1_HIGH
-
-  ; copy sprite 1 to all
-  ldy #0
-- lda $2000, y
-  sta $2000 + (64 * 1), y
-  sta $2000 + (64 * 2), y
-
-  ; !for i, 1, 7 {
-  ;   sta $2000 + (64 * i), y
-  ; }
-  iny
-  cpy #64
-  bne -
 
   ; scale all 8 sprites x2
   lda #%11111111
@@ -76,10 +66,17 @@ SR_screen_setup
   }
 
   ; point to our sprite data
-  lda #$80
-  !for i, 0, 7 {
-    sta $07f8 + i
-  }
+  lda #SPRITE_DATA_SQUARE
+  sta SPRITE_PTR1
+  sta SPRITE_PTR2
+  sta SPRITE_PTR3
+  sta SPRITE_PTR6
+  sta SPRITE_PTR7
+  sta SPRITE_PTR8
+  lda #SPRITE_DATA_L
+  sta SPRITE_PTR4
+  lda #SPRITE_DATA_R
+  sta SPRITE_PTR5
 
   ; turn on all 8 sprites
   lda #%11111111
@@ -108,7 +105,6 @@ SR_main_loop
   lda #0
   sta screen_writes
 -
-  ;jsr SR_await_raster_line
   jsr SR_await_raster_line
 
   lda (PTR1), y
@@ -269,6 +265,15 @@ idx_in_active_set !byte 0
 screen_writes !byte 0
 temp_line !fill 40
 
+rlines
+  !for i, 0, 4 {
+    !byte 21 * i
+  }
+sprite_y_values
+  !for i, 0, 4 {
+    !byte (50 + (40 * i)) % 255
+  }
+
 ; sprite 1
 *=$2000
   !byte %11111111,%11111111,%11111110
@@ -292,14 +297,36 @@ temp_line !fill 40
   !byte %11111111,%11111000,%00000000
   !byte %11111111,%11111000,%00000000
   !byte %11111111,%11110000,%00000000
-; reserve sprites 2-8
-  !fill 64, $99
-  !fill 64, $99
-  !fill 64, $99
-  !fill 64, $99
-  !fill 64, $99
-  !fill 64, $99
-  !fill 64, $99
+  !byte 0
+; sprite 2
+  !byte %01111111,%11111111,%11111111
+  !byte %00111111,%11111111,%11111111
+  !byte %00111111,%11111111,%11111111
+  !byte %00011111,%11111111,%11111111
+  !byte %00011111,%11111111,%11111111
+  !byte %00001111,%11111111,%11111111
+  !byte %00001111,%11111111,%11111111
+  !byte %00000111,%11111111,%11111111
+  !byte %00000111,%11111111,%11111111
+  !byte %00000011,%11111111,%11111111
+  !byte %00000001,%11111111,%11111111
+  !byte %00000001,%11111111,%11111111
+  !byte %00000000,%11111111,%11111111
+  !byte %00000000,%11111111,%11111111
+  !byte %00000000,%01111111,%11111111
+  !byte %00000000,%01111111,%11111111
+  !byte %00000000,%00111111,%11111111
+  !byte %00000000,%00111111,%11111111
+  !byte %00000000,%00011111,%11111111
+  !byte %00000000,%00011111,%11111111
+  !byte %00000000,%00001111,%11111111
+  !byte 0
+  !fill 64, $ff
+  !fill 64, $ff
+  !fill 64, $ff
+  !fill 64, $ff
+  !fill 64, $ff
+  !fill 64, $ff
 
 !zone
 SR_wrap_lines
