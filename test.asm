@@ -16,6 +16,9 @@
   CHAR_ROM          = $D000
   MOVE_CHAR_BY      = 40
 
+  FIRST_SPRITE_IDX = 1
+  LAST_SPRITE_IDX = 6
+
   SPRITE_DATA_L = $80
   SPRITE_DATA_R = $81
   SPRITE_DATA_SQUARE = $82
@@ -30,8 +33,13 @@
   SPRITE_PTR8 = $07FF
 
   SPRITE_X1 = $D000
+  SPRITE_X_HIGH = $D010
 
   NUM_INTERRUPTS = 6
+
+  ; How many lines before the target raster line before we start
+  ; moving sprites
+  PREP_LINES = 12
 
 main
   jsr SR_screen_setup
@@ -49,21 +57,14 @@ SR_screen_setup
   lda #$00
   sta BACKGROUND_COLOR
 
-  ; Pointers to top left
-  ; PTR1 will point to screen character address
-  lda #<CHAR_START
-  sta PTR1
-  lda #>CHAR_START
-  sta PTR1_HIGH
-
   ; scale all 8 sprites x2
   lda #%11111111
 	sta $D01D	; x-axis
 	sta $D017	; y-axis
 
   ; sprite FG colors
-	lda #$00
-  !for i, 0, 7 {
+	!for i, 0, 7 {
+    lda #0
     sta $D027 + i
   }
 
@@ -80,19 +81,20 @@ SR_screen_setup
   lda #SPRITE_DATA_R
   sta SPRITE_PTR5
 
-  ; turn on sprite 1
-  lda #%11111111
+  ; turn on sprites
+  lda #%01111110
 	sta $d015
 
-  ; x positions
-  !for i, 0, 7 {
-    lda #(20 + (40 * i)) % 255
-    sta SPRITE_X1 + (2 * i)
+  ; sprite X values
+  ldy #0
+  !for i, 0, 8 {
+    lda sprite_x1_low_values + (5 * i), y
+    sta SPRITE_X1 + (i * 2)
   }
-  lda #%11000000
-  sta $D010
+  lda sprite_x_high_values
+  sta SPRITE_X_HIGH
 
-  ; y positions
+  ; sprite Y values
   lda #50
   !for i, 0, 7 {
     sta SPRITE_X1 + (i * 2) + 1
@@ -111,15 +113,35 @@ irq_handler
   jmp .irq_not_5
 
 .irq_5
+  ; bump frame count
+  lda frame
+  clc
+  adc #1
+  bne .skip_frame_rollover
+  inc frame + 1
+  lda #0
+
+.skip_frame_rollover
+  sta frame
   jsr SR_after_screen
   jmp .done
 
 .irq_not_5
+  ; sprite Y values
   ldy active_interrupt
   lda sprite_y_values, y
-  !for i, 0, 7 {
+  !for i, FIRST_SPRITE_IDX, LAST_SPRITE_IDX {
     sta SPRITE_X1 + 1 + (2 * i)
   }
+
+  ; sprite X values
+  ldy active_interrupt
+  !for i, FIRST_SPRITE_IDX, LAST_SPRITE_IDX {
+    lda sprite_x1_low_values + (5 * i), y
+    sta SPRITE_X1 + (i * 2)
+  }
+  lda sprite_x_high_values, y
+  sta SPRITE_X_HIGH
 
 .done
   ; set up for next rasterline
@@ -216,20 +238,37 @@ active_letter_block !byte 0
 idx_in_active_set !byte 0
 screen_writes !byte 0
 temp_line !fill 40
+frame !fill 2, 0
 
 active_interrupt !byte 0
 
 rasterlines
   !for i, 0, 4 {
-    !byte 50 + (42 * i) - 15
+    !byte 50 + (42 * i) - PREP_LINES
   }
   !byte 210
-  !byte 50 + (42 * 0) - 15
+  !byte 50 + (42 * 0) - PREP_LINES
 
 sprite_y_values
   !for i, 0, 4 {
     !byte 50 + (42 * i)
   }
+
+sprite_x1_low_values
+  !byte 20, 19, 18, 17, 16
+  !byte 60, 60 - 24, 60 - 24*2, 60 - 24*2, 60 - 24*2
+  !byte 100, 100 - 24, 100 - 24*2, 100 - 24*3, 100 - 24*4
+  !byte 140, 140 - 24, 140 - 24*2, 140 - 24*3, 140 - 24*4
+  !byte 180, 180 + 24, 180 + 24*2, 180 + 24*3, (180 + 24*4)%$ff
+  !byte 220, 220 + 24, (220 + 24*2)%$ff, (220 + 24*3)%$ff, (220 + 24*4)%$ff
+  !byte 5, 5 + 24, 5 + 24*2, 5 + 24*2, 5 + 24*2
+  !byte 45, 45, 45, 45, 45
+sprite_x_high_values
+  !byte %11000000
+  !byte %11000000
+  !byte %11100000
+  !byte %11100000
+  !byte %11110000
 
 
 ; sprite 1
@@ -398,4 +437,16 @@ after_bump_pointers
   cmp #0
   beq -
   ; end of screen reached
+
+  ; erase sides
+  lda #32
+  !for i, 0, 24 {
+    !for j, 0, 4 {
+      sta CHAR_START + (i * 40) + j
+    }
+    !for j, 35, 39 {
+      sta CHAR_START + (i * 40) + j
+    }
+  }
+
   rts
